@@ -1,0 +1,277 @@
+# constants for the 2026 robot
+from itertools import count
+import math
+import wpilib
+import rev
+import wpimath.units
+from rev import ClosedLoopSlot, SparkClosedLoopController, SparkFlexConfig, SparkMax, SparkMaxConfig
+from wpimath.geometry import Pose2d, Rotation2d, Translation2d, Transform2d
+from wpimath.units import inchesToMeters, lbsToKilograms
+from typing import Union, List
+
+from helpers.utilities import set_config_defaults
+
+k_swerve_config = "practice"  # choose between practice bot and comp bot for now - they differ by swerve ofsets
+
+
+k_at_home = False  # used for intake calibration - True means we start with the intake out
+
+# Generator for unique counter offsets
+_counter = count(1)
+
+# TODO - organize this better
+k_enable_logging = True  # allow logging from Advantagescope (in swerve.py), but really we may as well start it here
+
+# starting position for odometry (real and in sim)
+k_start_x, k_start_y = 2.79, 2.20
+
+# ------------  joysticks and other input ------------
+k_driver_controller_port = 0
+k_co_driver_controller_port = 1
+k_bbox_1_port = 2
+k_bbox_2_port = 3
+
+
+# should be fine to burn on every reboot, but we can turn this off
+k_burn_flash = True
+
+#  ----------  network tables organization - one source for truth in publishing
+# systems outside the robot
+camera_prefix = r'/Cameras'  # from the pis
+quest_prefix = r'/QuestNav'  # putting this on par with the cameras as an external system
+
+# systems inside/from the robot
+status_prefix = r'/SmartDashboard/RobotStatus'  # the default for any status message
+vision_prefix = r'/SmartDashboard/Vision'  # from the robot
+swerve_prefix = r'/SmartDashboard/Swerve'  # from the robot
+sim_prefix = r'/SmartDashboard/Sim'  # from the sim (still from the robot)
+auto_prefix = r'/SmartDashboard/Auto'  # one place for all of our auto goals and temp variables
+command_prefix = r'Command'  # SPECIAL CASE: the SmartDashboard.putData auto prepends /SmartDashboard to the key\
+mech_prefix = r'/Mech' # SPECIAL CASE: the SmartDashboard.putData auto prepends /SmartDashboard to the key\
+
+
+k_swerve_debugging_messages = True
+# multiple attempts at tags this year - TODO - use l/r or up/down tilted cameras again, gives better data
+k_use_quest_odometry = True
+k_use_photontags = False  # take tags from photonvision camera
+k_use_CJH_tags = True  # take tags from the pis
+k_allow_tag_averaging = True
+
+k_swerve_only = False
+k_swerve_rate_limited = True
+k_field_oriented = True  # is there any reason for this at all?
+
+class FieldConstants:
+    # this changes year by year.  TODO: need to find it by software
+    k_field_length = 16.54  # 2026 Rebuilt
+    k_field_width = 8.07  # 2026 Rebuilt
+    k_robot_width = 0.84  # meters, with bumpers
+
+
+class CameraConstants:
+    #  ----------  camera configuration (may need its own class eventually)  ----------
+    # Dictionary mapping Logical Name -> NetworkTables Camera Name in /Cameras
+    # Each camera has a purpose, which can be 'tags' (apriltags) or 'orange' (hsv-filtered objects)
+    # If one physical camera does both, we treat it as two cameras but with the same topic
+    # ordering is nice to align with the IP and order they are on the pis, but not required
+    # rotation angle is CCW positive from the front of the robot
+    fov = 45  # sim testing fov, no effect on real robot yet
+
+    k_practicebot_cameras = {
+        'logi_front': {'topic_name': 'LogitechFront', 'type': 'tags', 'rotation': 0, 'fov': fov},
+        'logi_front_hsv': {'topic_name': 'LogitechFront', 'type': 'hsv', 'label': 'yellow', 'rotation': 0, 'fov': fov},
+        'logi_left': {'topic_name': 'LogitechLeft', 'type': 'tags', 'rotation': 90, 'fov': fov},
+        'logi_left_hsv': {'topic_name': 'LogitechLeft', 'type': 'hsv', 'label': 'yellow', 'rotation': 90, 'fov': fov},
+    }
+
+    k_comp_cameras = {
+        'arducam_right': {'topic_name': 'ArducamRight', 'type': 'tags', 'rotation': 0, 'fov': fov},
+        'arducam_back': {'topic_name': 'ArducamBack', 'type': 'tags', 'rotation': 180, 'fov': fov},
+        #'arducam_left': {'topic_name': 'ArducamLeft', 'type': 'tags', 'rotation': 0, 'fov': fov},
+    }
+
+    # for testing hsv pickup
+    k_sim_cameras = {
+        'logi_front_hsv': {'topic_name': 'LogitechFront', 'type': 'hsv', 'label': 'yellow', 'rotation': 0, 'fov': fov},
+        'arducam_right': {'topic_name': 'ArducamRight', 'type': 'tags', 'rotation': 0, 'fov': fov},
+        'arducam_back': {'topic_name': 'ArducamBack', 'type': 'tags', 'rotation': 180, 'fov': fov},
+        'logi_left_hsv': {'topic_name': 'LogitechLeft', 'type': 'hsv', 'label': 'yellow', 'rotation': 90, 'fov': fov},
+    }
+
+
+    k_cameras = k_comp_cameras
+
+    # add local_tester.py's sim camera if in sim - allows for testing without pis
+    if wpilib.RobotBase.isSimulation():
+        k_cameras = k_sim_cameras
+        k_cameras.update({'front_sim': {'topic_name': 'LocalTest', 'type': 'tags', 'rotation': 0, 'fov': fov},})
+
+
+class SimConstants:
+    k_counter_offset = next(_counter)
+    k_cam_distance_limit = 4  # sim testing how far targets can be - usually 3 to 3.5m on the real cameras
+    k_tag_visibility_angle = 60  # degrees, the angle from normal that the tag can be seen (90 means +/- 90 deg)
+
+    k_print_config = True  # use for debugging the camera config
+
+    k_disable_vision_sim = True  # Hard disable.  Set to stop all vision simulation (e.g. ONLY using real coprocessors)
+    k_draw_camera_fovs = True  # Set to draw camera FOV triangles - should always want this
+    k_use_external_cameras = False  # override the vision sim to only take targets from real cams - squashes blink_test
+    k_do_blink_test = False  # Set to test dashboard connection handling (e.g. dropping camera connections)
+    k_use_live_tags_in_sim = True  # Set to True to snap the robot's swerve sim to live AprilTag data
+    k_mock_questnav = False  # Set to False to test real QuestNav hardware in Sim
+
+
+class VisionConstants:
+
+    k_counter_offset = next(_counter)
+    k_nt_debugging = False  # print extra values to NT for debugging
+
+    k_valid_tags = list(range(1, 23))
+
+    k_print_config = True  # use for debugging the camera config
+
+
+class QuestConstants:
+    k_counter_offset = next(_counter)
+    quest_to_robot = Transform2d(inchesToMeters(-14), inchesToMeters(-8), Rotation2d().fromDegrees(270))
+
+    k_max_disconnected_count = 14  # number of cycles of lost quest before we call passthru
+    k_allow_quest_auto_resync = True  # teleop tries to resync if certain conditions are met
+    k_max_resync_time = 1.5  # if we have not fixed the dtap in this many seconds, don't soft resync
+    k_max_passthru_distance = 2.0  # meters we can move in passthru before rejecting soft resync
+
+
+class LedConstants:
+
+    k_counter_offset = next(_counter)
+    k_nt_debugging = False  # print extra values to NT for debugging
+    k_led_count = 8  # correct as of 2026 0319
+    k_led_count_ignore = 4  # flat ones not for the height indicator
+    k_led_pwm_port = 0  # correct as of 2025 0305
+
+class RobotStateConstants:
+
+    k_counter_offset = next(_counter)
+    k_nt_debugging = False  # print extra values to NT for debugging
+
+class DrivetrainConstants:
+
+    k_counter_offset = next(_counter)
+    k_nt_debugging = False  # print extra values to NT for debugging
+    # these are for the apriltags.  For the most part, you want to trust the gyro, not the tags for angle
+    # based on https://www.chiefdelphi.com/t/swerve-drive-pose-estimator-and-add-vision-measurement-using-limelight-is-very-jittery/453306/13
+    # HIGH numbers = LOW trust  (~ big stdev = we don't trust it much) 2m is high, 0.1m is small
+    k_pose_stdevs_large = (2, 2, 10)  # use when you don't trust the april tags - stdev x, stdev y, stdev theta
+    k_pose_stdevs_disabled = (1, 1, 2)  # use when we are disabled to quickly get updates
+    k_pose_stdevs_small = (0.1, 0.1, 0.1)  # use when you do trust the tags
+    k_AB_on = False
+
+    # for now, the remaining constants are in swerve_constants.py
+
+
+
+class AutoConstants:
+    k_auto_duration = 20
+
+class ShooterConstants:
+
+    k_counter_offset = next(_counter)
+
+    # HOPPER
+    k_CANID_hopper = 6  # reserve 7
+    k_hopper_config = SparkMaxConfig()
+    k_hopper_config.inverted(True)
+    k_hopper_rpm = 5000  # TODO - decide if this can just be a voltage
+
+    # INDEXER
+    k_CANID_indexer_left_leader, k_CANID_indexer_right_follower  = 8, 9
+    k_indexer_left_leader_config, k_indexer_right_follower_config = SparkMaxConfig(), SparkMaxConfig()
+    k_indexer_left_leader_config.inverted(False)  # TODO - check which way it spins for positive RPM
+    k_indexer_right_follower_config.follow(k_CANID_indexer_left_leader, invert=False) # depends on motor placement
+    k_indexer_rpm = 4000  # TODO - decide if this can just be a voltage
+    k_max_indexer_rpm = 5600  # - Trentan using this for feeding command
+
+    # FLYWHEEL
+    k_CANID_flywheel_left_leader, k_CANID_flywheel_right_follower = 10, 11  # left flywheel and follower
+    k_CANID_flywheel_roller = 12  # one roller
+    k_flywheel_left_leader_config, k_flywheel_right_follower_config = SparkFlexConfig(), SparkFlexConfig()
+    
+    # ROLLER
+    k_flywheel_roller_config = SparkFlexConfig()
+
+    # TODO - document all these numbers - are they used?
+    k_fire_up_speed = 3800  # prefire rpm to ramp up, used in autos
+    k_shooter_test_speed = 4000  # used as a defualt, as well as a spin up speed for tracking
+    k_shooter_max_speed = 5800  # max rpm of the neos, if the rpm exceeds this, we run at max speed
+    k_shooter_rpm_tolerance = 300  # rpm tolerance for when we can allow the shooter to fire
+    k_operator_rpm_adjustment = 180  # rpm increase or decrease from operator joystick
+
+    k_test_rpm = 2000
+    allowed_shooter_rpms = [0, 60] + [i for i in range(2000, 5601, 50)]+ [5600]
+
+    # set inversions
+    k_flywheel_left_leader_config.inverted(False)  # have to check which way it spins for positive RPM
+    k_flywheel_roller_config.inverted(False)
+    # set up the followers
+    k_flywheel_right_follower_config.follow(k_CANID_flywheel_left_leader, invert=True)  # depends on motor placement
+
+    # if we want, we could put the feed forward here instead of in the subsystem
+    # maxmotion - allows us to set mav velocity, acceleration and jerk, letting us crank proportional response]
+    vortex_max_rpm = 6784  # Vortex
+    k_flywheel_left_leader_config.closedLoop.pidf(p=1e-4, i=0, d=0, ff=1 / vortex_max_rpm, slot=rev.ClosedLoopSlot.kSlot0)
+
+    # Configure MAXMotion (The "Modern" Smart Motion) - Note: "maxMotion" object instead of "smartMotion"
+    k_flywheel_left_leader_config.closedLoop.maxMotion.cruiseVelocity(6000, slot=rev.ClosedLoopSlot.kSlot0)
+    k_flywheel_left_leader_config.closedLoop.maxMotion.maxAcceleration(10000, slot=rev.ClosedLoopSlot.kSlot0)
+    k_flywheel_left_leader_config.closedLoop.maxMotion.allowedClosedLoopError(0, slot=rev.ClosedLoopSlot.kSlot0)
+    ks_volts = 0.5
+    k_flywheel_left_leader_config.encoder.quadratureMeasurementPeriod(20)
+
+    # Configure Roller to match Flywheel (MaxMotion)
+    k_flywheel_roller_config.closedLoop.pidf(p=1e-4, i=0, d=0, ff=1 / vortex_max_rpm, slot=rev.ClosedLoopSlot.kSlot0)
+    k_flywheel_roller_config.closedLoop.maxMotion.cruiseVelocity(6000, slot=rev.ClosedLoopSlot.kSlot0)
+    k_flywheel_roller_config.closedLoop.maxMotion.maxAcceleration(8000, slot=rev.ClosedLoopSlot.kSlot0)
+    k_flywheel_roller_config.closedLoop.maxMotion.allowedClosedLoopError(0, slot=rev.ClosedLoopSlot.kSlot0)
+    k_flywheel_roller_config.encoder.quadratureMeasurementPeriod(20)
+    # k_flywheel_roller_config.encoder.quadratureAverageDepth(20)
+
+
+
+    # set all configs - make sure you keep this order in the subsystem
+    # setting brake, voltage compensation, and current limit for the flywheel motors
+    k_flywheel_configs = [k_flywheel_left_leader_config, k_flywheel_right_follower_config]
+    k_shooter_configs: list =  [k_hopper_config,
+                                k_indexer_left_leader_config, k_indexer_right_follower_config,
+                                k_flywheel_left_leader_config, k_flywheel_right_follower_config,
+                                k_flywheel_roller_config]
+
+    set_config_defaults(k_shooter_configs)
+    # problem - having the indexers at 40 made us brown out at WK1
+    k_indexer_left_leader_config.smartCurrentLimit(30)
+    k_indexer_right_follower_config.smartCurrentLimit(30)
+    k_flywheel_left_leader_config.smartCurrentLimit(45)
+    k_flywheel_right_follower_config.smartCurrentLimit(45)
+    k_flywheel_roller_config.smartCurrentLimit(50)
+
+
+    # Lookup Tables: Distance (meters) -> Value
+    fudge_factor = 1.05
+    k_distance_to_rpm = {
+        1.5: 3100*fudge_factor,
+        2.0: 3300*fudge_factor,
+        3.0: 4050*fudge_factor,
+        3.5: 4300*fudge_factor,
+        4.0: 4600*fudge_factor,
+        4.5: 4900*fudge_factor
+    }
+    
+    # Distance (meters) -> Time of Flight (seconds)
+    # Used for the targeting lag compensation
+    k_distance_to_tof = {
+        1.5: 0.90,
+        2.0: 1.01,
+        3.0: 1.28,
+        4.0: 1.49,
+        5.0: 2.0
+    }
