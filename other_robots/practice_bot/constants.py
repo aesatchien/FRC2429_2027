@@ -50,6 +50,9 @@ command_prefix = r'Command'  # SPECIAL CASE: the SmartDashboard.putData auto pre
 mech_prefix = r'/Mech' # SPECIAL CASE: the SmartDashboard.putData auto prepends /SmartDashboard to the key\
 
 
+hand_prefix = r'/SmartDashboard/Hand'
+
+
 k_swerve_debugging_messages = True
 # multiple attempts at tags this year - TODO - use l/r or up/down tilted cameras again, gives better data
 k_use_quest_odometry = True
@@ -275,3 +278,16 @@ class ShooterConstants:
         4.0: 1.49,
         5.0: 2.0
     }
+
+class HandConstants:
+    k_counter_offset = next(_counter)
+
+    k_CANID_hand_left_leader = 13
+    k_CANID_hand_right_follower = 14
+    
+    k_hand_left_leader_config, k_hand_right_follower_config = SparkMaxConfig(), SparkMaxConfig()
+
+    k_hand_configs = [k_hand_left_leader_config, k_hand_right_follower_config]
+
+    k_hand_left_leader_config.inverted(False)
+    k_hand_right_follower_config.follow(k_CANID_hand_left_leader, invert=True)

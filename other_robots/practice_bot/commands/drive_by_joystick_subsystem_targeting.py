@@ -98,8 +98,8 @@ class DriveByJoystickSubsystemTargeting(commands2.Command):
         # -----------------------------------------------------------
         # 1. READ INPUTS
         # -----------------------------------------------------------
-        if self.ps5_controller is not None and wpilib.DriverStation.isJoystickConnected(0):
-            left_y, left_x, right_x, right_trigger, robot_oriented = self.read_ps5(self.ps5_controller.getHID())
+        if self.driver_controller is not None and wpilib.DriverStation.isJoystickConnected(0):
+            left_y, left_x, right_x, right_trigger, robot_oriented = self.read_ps5(self.driver_controller.getHID())
         else:
             left_y, left_x, right_x, right_trigger, robot_oriented = 0.0, 0.0, 0.0, 0.0, False
 
