@@ -25,6 +25,8 @@ from subsystems.swerve import Swerve
 from subsystems.vision import Vision
 from subsystems.targeting import Targeting
 
+from subsystems.hand import Hand
+
 # 2429 "auto" commands - just an organizational division of commands
 from autonomous.pathing_drawing import DrawingAuto
 
@@ -37,6 +39,8 @@ from commands.reset_field_centric import ResetFieldCentric
 from commands.set_leds import SetLEDs
 from commands.swerve_test import SwerveTest
 from commands.swerve_set_x import SwerveSetX
+
+from commands.hand_set_rpm import Hand_Set_RPM
 
 
 class RobotContainer:
@@ -57,6 +61,8 @@ class RobotContainer:
         # self.climber = Climber()
         self.robot_state = RobotState()  # currently has a callback that LED can register
         self.led = Led(robot_state=self.robot_state)  # may want LED last because it may want to know about other systems
+
+        self.hand = Hand()
 
         # ----------  CONTROLLERS & DEFAULTS  ---------------
         self.bind_driver_buttons()
@@ -110,6 +116,8 @@ class RobotContainer:
                 pass
     
             js.ps_l2.whileTrue(SwerveSetX(container=self, swerve=self.swerve))
+
+            js.ps_circle.onTrue(Hand_Set_RPM(self.hand))
 
     def bind_codriver_buttons(self) -> None:
         # ----------  CO-DRIVER BUTTONS  ---------------
