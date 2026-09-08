@@ -64,11 +64,18 @@ k_swerve_only = False
 k_swerve_rate_limited = True
 k_field_oriented = True  # is there any reason for this at all?
 
+from robotpy_apriltag import AprilTagFieldLayout, AprilTagField
+
 class FieldConstants:
-    # this changes year by year.  TODO: need to find it by software
-    k_field_length = 16.54  # 2026 Rebuilt
-    k_field_width = 8.07  # 2026 Rebuilt
-    k_robot_width = 0.84  # meters, with bumpers
+    try:
+        # getting field constants via apriltag libraries
+        field_layout = AprilTagFieldLayout.loadField(AprilTagField.k2024Crescendo)
+        k_field_length = field_layout.getFieldLength()
+        k_field_width = field_layout.getFieldWidth()
+    except:
+        k_field_length = 16.54  # 2026 Rebuilt
+        k_field_width = 8.07  # 2026 Rebuilt
+    k_robot_width = 0.84
 
 
 class CameraConstants:
