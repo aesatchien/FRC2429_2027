@@ -69,7 +69,8 @@ from robotpy_apriltag import AprilTagFieldLayout, AprilTagField
 class FieldConstants:
     try:
         # getting field constants via apriltag libraries
-        field_layout = AprilTagFieldLayout.loadField(AprilTagField.k2024Crescendo)
+        # 2026 for now
+        field_layout = AprilTagFieldLayout.loadField(AprilTagField.k2026Reefscape)
         k_field_length = field_layout.getFieldLength()
         k_field_width = field_layout.getFieldWidth()
     except:
